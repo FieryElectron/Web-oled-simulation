@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>OLED</title>
+	<script src="jquery-1.9.1.min.js"></script>
+	<style type="text/css">
+		html {
+			background: black;
+		}
+
+		.pixel {
+			position: relative;
+			height: 5px;
+			width: 5px;
+			background: #666666;
+			float: left;
+			margin-right: 1px;
+			font-size: 8px;
+			color: red;
+		}
+
+		.row {
+			margin: 1px;
+			position: relative;
+			height: 5px;
+			width: 100%;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="mainFrame">
+	</div>
+	<script type="text/javascript">
+
+		const OLED_WIDTH = 64;
+		const OLED_HEIGHT = 64;
+		// OLED_WIDTH*OLED_HEIGHT
+		function point2d(x, y) {
+			this.x = x;
+			this.y = y;
+		}
+
+		function point3d(x, y, z) {
+			this.x = x;
+			this.y = y;
+			this.z = z;
+		}
+
+		function Line2d(p1, p2) {
+			this.p1 = p1;
+			this.p2 = p2;
+		}
+
+		function Line3d(p1, p2) {
+			this.p1 = p1;
+			this.p2 = p2;
+		}
+
+		var DArr = new Array();
+
+		for (var j = 0; j < OLED_HEIGHT; ++j) {
+			DArr[j] = new Array();
+			for (var i = 0; i < OLED_WIDTH; ++i) {
+				DArr[j][i] = 0;
+			}
+		}
+
+		var DArrNow = new Array();
+
+		for (var j = 0; j < OLED_HEIGHT; ++j) {
+			DArrNow[j] = new Array();
+			for (var i = 0; i < OLED_WIDTH; ++i) {
+				DArrNow[j][i] = 0;
+			}
+		}
+
+		var Line3dArray = new Array();
+
+		Line3dArray.push(new Line3d(new point3d(-25, 0, 0), new point3d(25, 0, 0)));
+		Line3dArray.push(new Line3d(new point3d(0, -20, 0), new point3d(0, 20, 0)));
+
+
+		Line3dArray.push(new Line3d(new point3d(20, -5, 0), new point3d(20, 5, 0)));
+		Line3dArray.push(new Line3d(new point3d(25, 0, 0), new point3d(20, -5, 0)));
+		Line3dArray.push(new Line3d(new point3d(25, 0, 0), new point3d(20, 5, 0)));
+
+		Line3dArray.push(new Line3d(new point3d(20, 0, 0), new point3d(20, 0, 5)));
+		Line3dArray.push(new Line3d(new point3d(25, 0, 0), new point3d(20, 0, 5)));
+
+
+
+		Line3dArray.push(new Line3d(new point3d(0, -20, 0), new point3d(17, 0, 0)));
+		Line3dArray.push(new Line3d(new point3d(0, 20, 0), new point3d(17, 0, 0)));
+
+		Line3dArray.push(new Line3d(new point3d(-25, -10, 0), new point3d(-25, 10, 0)));
+		Line3dArray.push(new Line3d(new point3d(-25, -10, 0), new point3d(-15, 0, 0)));
+		Line3dArray.push(new Line3d(new point3d(-25, 10, 0), new point3d(-15, 0, 0)));
+
+		Line3dArray.push(new Line3d(new point3d(-25, 0, 0), new point3d(-25, 0, 10)));
+		Line3dArray.push(new Line3d(new point3d(-15, 0, 0), new point3d(-25, 0, 10)));
+
+		Ini();
+
+		function Ini() {
+			for (var j = 0; j < OLED_HEIGHT; ++j) {
+				var row = createRow();
+				for (var i = 0; i < OLED_WIDTH; ++i) {
+					$(row).append(createPixel(j + "_" + i));
+				}
+			}
+		}
+
+		var display_height = 31;
+		var display_width = 31;
+
+		var right_shift = 0;
+		var up_shift = 0;
+		var zoom_rate = 1;
+
+		var pivot_X = 0;
+		var pivot_Y = 0;
+		var pivot_Z = 0;
+
+		function Update3DLines() {
+			for (var i = 0; i < Line3dArray.length; ++i) {
+				var p1 = Transf3d(Line3dArray[i].p1);
+				var p2 = Transf3d(Line3dArray[i].p2);
+
+				var line_2d = ConvertLine3D_2D(new Line3d(p1, p2));
+				drawLine(line_2d.p1, line_2d.p2);
+			}
+			RefreshDisplay();
+		}
+
+		function ConvertPoint3D_2D(point) {
+			var x2d = (point.z + up_shift) * zoom_rate;
+			var y2d = (point.y + right_shift) * zoom_rate;
+			return new point2d(x2d, y2d);
+		}
+
+		function ConvertLine3D_2D(line) {
+			var p1 = ConvertPoint3D_2D(line.p1);
+			var p2 = ConvertPoint3D_2D(line.p2);
+			return new Line2d(p1, p2);
+		}
+
+		function drawLine(p1, p2) {
+			var np1 = ConvertReal2D(p1);
+			var np2 = ConvertReal2D(p2);
+			rawwriteLine(parseInt(np1.x), parseInt(np1.y), parseInt(np2.x), parseInt(np2.y));
+		}
+
+		function isValid(value) {
+			if (value >= 0 && value < OLED_HEIGHT) {
+				return true;
+			} else {
+				return false;
+			}
+		}
+
+		function rawwriteLine(x0, y0, x1, y1) {
+			var steep = Math.abs(y1 - y0) > Math.abs(x1 - x0);
+			if (steep) {
+				var tx = x0; x0 = y0; y0 = tx;
+				var ty = x1; x1 = y1; y1 = ty;
+			}
+			if (x0 > x1) {
+				var tx = x0; x0 = x1; x1 = tx;
+				var ty = y0; y0 = y1; y1 = ty;
+			}
+			var dx, dy;
+			dx = x1 - x0;
+			dy = Math.abs(y1 - y0);
+			var err = dx / 2;
+			var ystep;
+			if (y0 < y1) {
+				ystep = 1;
+			} else {
+				ystep = -1;
+			}
+			for (; x0 <= x1; x0++) {
+				if (!isValid(x0) || !isValid(y0)) {
+					continue;
+				}
+				if (steep) {
+					DArrNow[y0][x0] = 1;
+				} else {
+					DArrNow[x0][y0] = 1;
+				}
+				err -= dy;
+				if (err < 0) {
+					y0 += ystep;
+					err += dx;
+				}
+			}
+		}
+
+		function ConvertReal2D(p) {
+			return new point2d(31 - p.x, p.y + 31);
+		}
+
+		function createRow() {
+			var div = $('<div></div>');
+			$(div).attr("class", "row");
+			$("#mainFrame").append(div);
+			return div;
+		}
+
+		function createPixel(id) {
+			var div = $('<div></div>');
+			$(div).attr("id", id);
+			$(div).attr("class", "pixel");
+			// var i = id.split("_");
+			// $(div).html(i[0]+','+i[1]);
+
+			return div;
+		}
+
+		function EnablePixel(row, col) {
+			$("#" + row + "_" + col).css("background", "#00BFFF");
+		}
+
+		function ResetPixel(row, col) {
+			$("#" + row + "_" + col).css("background", "#666666");
+		}
+
+		function ReversePixel(row, col) {
+			var obj = $("#" + row + "_" + col);
+			if ($(obj).css('background-color') === "rgb(102, 102, 102)") {
+				$(obj).css("background", "#00BFFF");
+
+			} else {
+				$(obj).css("background", "#666666");
+			}
+		}
+
+		function RefreshDisplay() {
+			for (var j = 0; j < OLED_HEIGHT; ++j) {
+				for (var i = 0; i < OLED_WIDTH; ++i) {
+					if (DArr[j][i] !== DArrNow[j][i]) {
+						ReversePixel(j, i);
+					}
+				}
+			}
+
+			for (var j = 0; j < OLED_HEIGHT; ++j) {
+				for (var i = 0; i < OLED_WIDTH; ++i) {
+					DArr[j][i] = DArrNow[j][i];
+				}
+			}
+
+			for (var j = 0; j < OLED_HEIGHT; ++j) {
+				DArrNow[j] = new Array();
+				for (var i = 0; i < OLED_WIDTH; ++i) {
+					DArrNow[j][i] = 0;
+				}
+			}
+
+		}
+
+		function Transf3d(p3d) {
+			var x = p3d.x;
+			var y = p3d.y;
+			var z = p3d.z;
+
+			var OriArr = new Array(4);
+
+			OriArr[0] = x;
+			OriArr[1] = y;
+			OriArr[2] = z;
+			OriArr[3] = 1;
+
+			var X = -pivot_X / 180 * Math.PI;
+			var Y = pivot_Y / 180 * Math.PI;
+			var Z = pivot_Z / 180 * Math.PI;
+
+			var TransArrX = [
+				[1, 0, 0, 0],
+				[0, Math.cos(X), -Math.sin(X), 0],
+				[0, Math.sin(X), Math.cos(X), 0],
+				[0, 0, 0, 1]
+			];
+			var TransArrY = [
+				[Math.cos(Y), 0, Math.sin(Y), 0],
+				[0, 1, 0, 0],
+				[-Math.sin(Y), 0, Math.cos(Y), 0],
+				[0, 0, 0, 1]
+			];
+			var TransArrZ = [
+				[Math.cos(Z), -Math.sin(Z), 0, 0],
+				[Math.sin(Z), Math.cos(Z), 0, 0],
+				[0, 0, 1, 0],
+				[0, 0, 0, 1]
+			];
+
+			OriArr[0] = x * TransArrX[0][0] + y * TransArrX[0][1] + z * TransArrX[0][2] + TransArrX[0][3];
+			OriArr[1] = x * TransArrX[1][0] + y * TransArrX[1][1] + z * TransArrX[1][2] + TransArrX[1][3];
+			OriArr[2] = x * TransArrX[2][0] + y * TransArrX[2][1] + z * TransArrX[2][2] + TransArrX[2][3];
+
+			x = OriArr[0];
+			y = OriArr[1];
+			z = OriArr[2];
+
+			OriArr[0] = x * TransArrY[0][0] + y * TransArrY[0][1] + z * TransArrY[0][2] + TransArrY[0][3];
+			OriArr[1] = x * TransArrY[1][0] + y * TransArrY[1][1] + z * TransArrY[1][2] + TransArrY[1][3];
+			OriArr[2] = x * TransArrY[2][0] + y * TransArrY[2][1] + z * TransArrY[2][2] + TransArrY[2][3];
+
+			x = OriArr[0];
+			y = OriArr[1];
+			z = OriArr[2];
+
+			OriArr[0] = x * TransArrZ[0][0] + y * TransArrZ[0][1] + z * TransArrZ[0][2] + TransArrZ[0][3];
+			OriArr[1] = x * TransArrZ[1][0] + y * TransArrZ[1][1] + z * TransArrZ[1][2] + TransArrZ[1][3];
+			OriArr[2] = x * TransArrZ[2][0] + y * TransArrZ[2][1] + z * TransArrZ[2][2] + TransArrZ[2][3];
+
+			var x3d = OriArr[0];
+			var y3d = OriArr[1];
+			var z3d = OriArr[2];
+
+			return new point3d(x3d, y3d, z3d);
+		}
+
+		// pivot_X = 30;
+
+		function loop() {
+			pivot_Y += 10;
+			pivot_X += 2;
+			pivot_Z += 5;
+			Update3DLines();
+			setTimeout(loop, 100);
+		}
+
+		setTimeout(loop, 100);
+
+	</script>
+</body>
+
+</html>
